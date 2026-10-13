@@ -21,6 +21,7 @@ type State struct {
 	AlertName     string            `json:"alertname"`
 	Severity      string            `json:"severity,omitempty"`
 	GroupLabels   map[string]string `json:"group_labels,omitempty"`
+	CommonLabels  map[string]string `json:"common_labels,omitempty"`
 	FiringCount   int               `json:"firing_count"`
 	ResolvedCount int               `json:"resolved_count"`
 	AffectedHosts []string          `json:"affected_hosts,omitempty"`
@@ -50,6 +51,9 @@ func BuildState(w *alertmanager.Webhook, s *scrub.Scrubber, now time.Time) State
 	}
 	if gl := s.Labels(w.GroupLabels); len(gl) > 0 {
 		st.GroupLabels = gl
+	}
+	if cl := commonLabels(w, s); len(cl) > 0 {
+		st.CommonLabels = cl
 	}
 
 	hosts := map[string]bool{}
@@ -92,6 +96,23 @@ func BuildState(w *alertmanager.Webhook, s *scrub.Scrubber, now time.Time) State
 		st.LongestFiring = humanDuration(longest)
 	}
 	return st
+}
+
+// commonLabels returns the labels every alert in the group shares, such as
+// namespace, job or service, scrubbed and without the ones the state
+// already carries elsewhere (alertname, severity, group labels and hosts).
+func commonLabels(w *alertmanager.Webhook, s *scrub.Scrubber) map[string]string {
+	skip := map[string]bool{"alertname": true, "severity": true}
+	for _, k := range alertmanager.HostLabels {
+		skip[k] = true
+	}
+	out := s.Labels(w.CommonLabels)
+	for k := range out {
+		if _, inGroup := w.GroupLabels[k]; inGroup || skip[k] {
+			delete(out, k)
+		}
+	}
+	return out
 }
 
 func firstNonEmpty(vs ...string) string {
