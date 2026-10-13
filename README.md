@@ -34,7 +34,7 @@ With two options, Jev's Choice confidence is `2 × max(p) − 1`, so the default
 
 ## Discord messages
 
-Messages are embeds titled `[FIRING:n] <alertname>` or `[RESOLVED] <alertname>`. The body lists each firing alert as a bold title with its description, then resolved alerts struck through. The footer shows the routing reason, for example `routed by Jev (p=0.93)` or `fallback (Jev timeout): severity=critical`. Titles and bodies are truncated to Discord's limits, dropping whole alerts and noting how many were left out. Mentions in alert text never ping anyone.
+Messages are embeds titled `[FIRING:n] <alertname>` or `[RESOLVED] <alertname>`. The body lists each firing alert as 🔴 and a bold title with its description, then each resolved alert as a ✅ struck-through title. The footer shows the routing reason, for example `routed by Jev (p=0.93)` or `fallback (Jev timeout): severity=critical`. Titles and bodies are truncated to Discord's limits, dropping whole alerts and noting how many were left out. Mentions in alert text never ping anyone.
 
 ## Usage
 

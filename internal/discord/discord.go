@@ -67,17 +67,23 @@ func Format(w *alertmanager.Webhook, footer string) Message {
 		color = colorFiring
 	}
 
-	var blocks []string
+	// Firing alerts are separated by blank lines; resolved ones follow as a
+	// compact list, one per line.
+	var pieces []piece
 	for _, a := range firing {
-		blocks = append(blocks, alertBlock(a, false))
+		pieces = append(pieces, piece{sep: "\n\n", text: alertBlock(a, false)})
 	}
-	for _, a := range w.Resolved() {
-		blocks = append(blocks, alertBlock(a, true))
+	for i, a := range w.Resolved() {
+		sep := "\n"
+		if i == 0 {
+			sep = "\n\n"
+		}
+		pieces = append(pieces, piece{sep: sep, text: alertBlock(a, true)})
 	}
 
 	e := Embed{
 		Title:       truncate(title, MaxTitle),
-		Description: joinWithin(blocks, MaxDescription),
+		Description: joinWithin(pieces, MaxDescription),
 		Color:       color,
 	}
 	if footer != "" {
@@ -86,9 +92,9 @@ func Format(w *alertmanager.Webhook, footer string) Message {
 	return Message{Embeds: []Embed{e}, AllowedMentions: AllowedMentions{Parse: []string{}}}
 }
 
-// alertBlock renders one alert as a bold title and its description; resolved
-// alerts are struck through line by line, since Discord strikethrough does
-// not span newlines.
+// alertBlock renders one alert the way talos-home's Alertmanager Discord
+// template does: a firing alert is a red marker, bold title and its
+// description; a resolved alert is a single struck-through title.
 func alertBlock(a alertmanager.Alert, resolved bool) string {
 	title := a.Annotations["title"]
 	if title == "" {
@@ -97,48 +103,45 @@ func alertBlock(a alertmanager.Alert, resolved bool) string {
 			title += " on " + host
 		}
 	}
+	if resolved {
+		return "✅ ~~" + title + "~~ (resolved)"
+	}
 	desc := a.Annotations["description"]
 	if desc == "" {
 		desc = a.Annotations["summary"]
 	}
-
-	if !resolved {
-		if desc == "" {
-			return "**" + title + "**"
-		}
-		return "**" + title + "**\n" + desc
+	if desc == "" {
+		return "🔴 **" + title + "**"
 	}
-	lines := []string{"~~" + title + "~~"}
-	for _, l := range strings.Split(desc, "\n") {
-		if strings.TrimSpace(l) != "" {
-			lines = append(lines, "~~"+l+"~~")
-		}
-	}
-	return strings.Join(lines, "\n")
+	return "🔴 **" + title + "**\n" + desc
 }
 
-// joinWithin joins blocks with blank lines, dropping trailing blocks that
-// don't fit within limit characters and noting how many were left out.
-func joinWithin(blocks []string, limit int) string {
-	const sep = "\n\n"
+// piece is a block of the description and the separator written before it.
+type piece struct {
+	sep, text string
+}
+
+// joinWithin joins pieces, dropping trailing ones that don't fit within
+// limit characters and noting how many were left out.
+func joinWithin(pieces []piece, limit int) string {
 	var b strings.Builder
 	used := 0
-	for i, blk := range blocks {
-		piece := blk
+	for i, p := range pieces {
+		text := p.text
 		if i > 0 {
-			piece = sep + blk
+			text = p.sep + p.text
 		}
-		size := utf8.RuneCountInString(piece)
-		if used+size+utf8.RuneCountInString(moreNote(len(blocks)-i-1)) > limit {
-			more := moreNote(len(blocks) - i)
+		size := utf8.RuneCountInString(text)
+		if used+size+utf8.RuneCountInString(moreNote(len(pieces)-i-1)) > limit {
+			more := moreNote(len(pieces) - i)
 			if i == 0 {
 				// A single oversized first block: cut it rather than send nothing.
-				more = moreNote(len(blocks) - 1)
-				return truncate(blk, limit-utf8.RuneCountInString(more)) + more
+				more = moreNote(len(pieces) - 1)
+				return truncate(p.text, limit-utf8.RuneCountInString(more)) + more
 			}
 			return b.String() + more
 		}
-		b.WriteString(piece)
+		b.WriteString(text)
 		used += size
 	}
 	return b.String()
