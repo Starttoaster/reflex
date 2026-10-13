@@ -24,6 +24,6 @@ and DISCORD_INFO_WEBHOOK.`,
 			return applyEnv(cmd.Flags())
 		},
 	}
-	root.AddCommand(newServeCommand(), newClassifyCommand(), newVersionCommand())
+	root.AddCommand(newServeCommand(), newClassifyCommand(), newQuestionsCommand(), newVersionCommand())
 	return root
 }

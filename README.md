@@ -73,11 +73,36 @@ Secrets are read from the environment only: `JEV_API_KEY`, `DISCORD_URGENT_WEBHO
 | `--jev-model` | `JEV_MODEL` | `jev-latest` | |
 | `--scrub-private-ips` | `REFLEX_SCRUB_PRIVATE_IPS` | `true` | redact RFC 1918 and loopback IPv4 addresses |
 | `--scrub-pattern` | `REFLEX_SCRUB_PATTERNS` | | extra regex to redact; repeatable, one per line in the env var |
+| `--questions-file` | `REFLEX_QUESTIONS_FILE` | | YAML wording for the Jev questions; see below |
 | `--scrub-label` | `REFLEX_SCRUB_LABELS` | | labels to leave out entirely; comma-separated |
 | `--sticky-ttl` | `REFLEX_STICKY_TTL` | `168h` | how long to remember a firing group's channel (serve) |
 | `--send-timeout` | `REFLEX_SEND_TIMEOUT` | `10s` | time limit per Discord delivery (serve) |
 | `--log-format` | `REFLEX_LOG_FORMAT` | `json` | `json` or `text` (serve) |
 | `--log-level` | `REFLEX_LOG_LEVEL` | `info` | (serve) |
+
+### Customising the questions
+
+The wording sent to Jev is the main lever for tuning decisions to your environment. Put your changes in a YAML file and pass it with `--questions-file`; any field you leave out keeps the default. Print the defaults as a starting point with:
+
+```sh
+reflex questions > questions.yaml
+```
+
+```yaml
+# Optional: describe your environment. Added to the state as "context".
+context: >-
+  Single-operator homelab. The media server and test VMs can wait until evening;
+  backups, DNS and the NAS cannot.
+route:
+  instructions: Should this alert group page the operator now, or can it wait?
+  page_now: A core service is down, data or backups are at risk, or there is a security problem.
+  informational: Anything else, including media server issues and brief blips.
+urgency:
+  enabled: true            # logged-only score; set false to skip it
+  levels: [No action needed, This week, Today, Within the hour, Now]   # 2 to 10, least urgent first
+```
+
+The structure is fixed: one choice between `page now` and `informational`, and an optional urgency score. Unknown keys are rejected, so a typo fails at startup instead of silently using a default. Try a new wording against saved payloads with `reflex classify --questions-file questions.yaml -f payload.json` before deploying it.
 
 ### Privacy
 

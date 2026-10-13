@@ -48,7 +48,7 @@ ones here; in serve they follow the channel their firing notification used.`,
 			if err != nil {
 				return err
 			}
-			return printDecision(cmd.OutOrStdout(), rt.Classify(cmd.Context(), hook))
+			return printDecision(cmd.OutOrStdout(), rt.Classify(cmd.Context(), hook), rt.Config.Questions)
 		},
 	}
 	fs := c.Flags()
@@ -59,7 +59,7 @@ ones here; in serve they follow the channel their firing notification used.`,
 	return c
 }
 
-func printDecision(w io.Writer, d router.Decision) error {
+func printDecision(w io.Writer, d router.Decision, q router.Questions) error {
 	section := func(title string, v any) error {
 		b, err := json.MarshalIndent(v, "", "  ")
 		if err != nil {
@@ -87,7 +87,8 @@ func printDecision(w io.Writer, d router.Decision) error {
 		_, _ = fmt.Fprintf(w, "confidence:    %.3f\n", d.Confidence)
 	}
 	if d.Urgency != nil {
-		_, _ = fmt.Fprintf(w, "urgency:       %.2f (0 none, 4 drop everything)\n", *d.Urgency)
+		levels := q.Urgency.Levels
+		_, _ = fmt.Fprintf(w, "urgency:       %.2f (0 %q … %d %q)\n", *d.Urgency, levels[0], len(levels)-1, levels[len(levels)-1])
 	}
 	if d.JevCalled {
 		_, _ = fmt.Fprintf(w, "jev latency:   %s\n", d.JevLatency.Round(time.Millisecond))

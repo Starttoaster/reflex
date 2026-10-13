@@ -15,6 +15,8 @@ const maxStateAlerts = 20
 
 // State is the structured description of an alert group sent to Jev.
 type State struct {
+	// Context is the operator's description of their environment, if any.
+	Context       string            `json:"context,omitempty"`
 	Status        string            `json:"status"`
 	AlertName     string            `json:"alertname"`
 	Severity      string            `json:"severity,omitempty"`

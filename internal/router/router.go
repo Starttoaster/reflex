@@ -116,6 +116,8 @@ type Config struct {
 	Timeout time.Duration
 	// Model is the Jev model; empty uses the client's default.
 	Model string
+	// Questions is the wording sent to Jev; empty fields use the defaults.
+	Questions Questions
 }
 
 // Router makes routing decisions. A nil Jev routes every notification by labels.
@@ -164,11 +166,13 @@ func (r *Router) classify(ctx context.Context, w *alertmanager.Webhook) Decision
 	if r.Now != nil {
 		now = r.Now
 	}
+	q := r.Config.Questions.WithDefaults()
 	state := BuildState(w, r.Scrubber, now())
+	state.Context = q.Context
 	req := jev.Request{
 		State:     state,
 		Model:     r.Config.Model,
-		Questions: questions(),
+		Questions: q.jevQuestions(),
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, r.Config.Timeout)
@@ -236,30 +240,4 @@ func LabelChannel(severity string) Channel {
 func fallback(w *alertmanager.Webhook, reason Reason, err error) Decision {
 	sev := w.Severity()
 	return Decision{Channel: LabelChannel(sev), Reason: reason, Severity: sev, Err: err}
-}
-
-func questions() map[string]jev.Question {
-	return map[string]jev.Question{
-		routeQuestion: jev.Choice(
-			"This is a group of monitoring alerts for a small self-hosted infrastructure, "+
-				"about to be sent to the on-call operator. Should it page them now, or can it wait "+
-				"until they next check the informational channel?",
-			map[string]string{
-				optionPageNow: "A human needs to act right away: a service people rely on is down or badly " +
-					"degraded, data is at risk, storage or capacity is about to run out, or there is a security problem.",
-				optionInfo: "It can wait: a warning or early signal, a brief or self-healing blip, a non-essential " +
-					"component, or something worth fixing eventually but not urgently.",
-			},
-		),
-		urgencyQuestion: jev.Score(
-			"How urgent is this alert group for the operator?",
-			[]string{
-				"No action needed",
-				"Look at it this week",
-				"Look at it today",
-				"Look at it within the hour",
-				"Drop everything now",
-			},
-		),
-	}
 }

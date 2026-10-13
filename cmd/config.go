@@ -35,6 +35,7 @@ type routingOptions struct {
 	scrubPrivateIPs bool
 	scrubPatterns   []string
 	scrubLabels     []string
+	questionsFile   string
 	logFormat       string
 	logLevel        string
 }
@@ -47,6 +48,7 @@ func (o *routingOptions) addFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.jevModel, "jev-model", jev.DefaultModel, "Jev model")
 	fs.BoolVar(&o.scrubPrivateIPs, "scrub-private-ips", true, "redact private and loopback IPv4 addresses before calling Jev")
 	fs.StringArrayVar(&o.scrubPatterns, "scrub-pattern", nil, "extra regex to redact before calling Jev (repeatable; env: one per line)")
+	fs.StringVar(&o.questionsFile, "questions-file", "", "YAML file with the wording of the questions sent to Jev (see 'reflex questions')")
 	fs.StringSliceVar(&o.scrubLabels, "scrub-label", nil, "label to leave out of the Jev request (repeatable or comma-separated)")
 }
 
@@ -67,6 +69,7 @@ var envNames = map[string]string{
 	"scrub-private-ips": "REFLEX_SCRUB_PRIVATE_IPS",
 	"scrub-pattern":     "REFLEX_SCRUB_PATTERNS",
 	"scrub-label":       "REFLEX_SCRUB_LABELS",
+	"questions-file":    "REFLEX_QUESTIONS_FILE",
 	"sticky-ttl":        "REFLEX_STICKY_TTL",
 	"send-timeout":      "REFLEX_SEND_TIMEOUT",
 	"log-format":        "REFLEX_LOG_FORMAT",
@@ -129,6 +132,15 @@ func (o *routingOptions) logger() (*slog.Logger, error) {
 	}
 }
 
+// loadQuestions returns the questions file merged over the defaults, or the
+// defaults when no file is set.
+func (o *routingOptions) loadQuestions() (router.Questions, error) {
+	if o.questionsFile == "" {
+		return router.DefaultQuestions(), nil
+	}
+	return router.LoadQuestions(o.questionsFile)
+}
+
 // newRouter builds a Router. Without an API key it routes by labels only.
 func (o *routingOptions) newRouter(sticky *router.Sticky) (*router.Router, error) {
 	patterns := o.scrubPatterns
@@ -139,12 +151,17 @@ func (o *routingOptions) newRouter(sticky *router.Sticky) (*router.Router, error
 	if err != nil {
 		return nil, err
 	}
+	questions, err := o.loadQuestions()
+	if err != nil {
+		return nil, err
+	}
 	r := &router.Router{
 		Config: router.Config{
 			Threshold:     o.threshold,
 			MinConfidence: o.minConfidence,
 			Timeout:       o.jevTimeout,
 			Model:         o.jevModel,
+			Questions:     questions,
 		},
 		Scrubber: scrubber,
 		Sticky:   sticky,
