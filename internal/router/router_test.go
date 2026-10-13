@@ -266,6 +266,54 @@ func TestResolvedFollowsFiring(t *testing.T) {
 	}
 }
 
+func TestUrgentGroupStaysUrgent(t *testing.T) {
+	f := &fakeJev{resp: routeAnswer(0.95, 0.9)}
+	r := newTestRouter(f)
+
+	first := r.Route(context.Background(), loadWebhook(t, "firing-critical.json"))
+	if first.Channel != Urgent || first.Reason != ReasonJev {
+		t.Fatalf("first = %s/%s, want urgent/jev", first.Channel, first.Reason)
+	}
+
+	// Jev would now say informational, but the group has already paged.
+	f.resp = routeAnswer(0.05, 0.9)
+	update := r.Route(context.Background(), loadWebhook(t, "firing-critical.json"))
+	if update.Channel != Urgent || update.Reason != ReasonEscalated || update.JevCalled {
+		t.Errorf("update = %s/%s called=%v, want urgent/escalated without Jev", update.Channel, update.Reason, update.JevCalled)
+	}
+	if f.calls != 1 {
+		t.Errorf("Jev called %d times, want 1", f.calls)
+	}
+	if update.Footer() != "still urgent: escalated earlier" {
+		t.Errorf("footer = %q", update.Footer())
+	}
+
+	resolved := r.Route(context.Background(), loadWebhook(t, "resolved-critical.json"))
+	if resolved.Channel != Urgent || resolved.Reason != ReasonSticky {
+		t.Errorf("resolved = %s/%s, want urgent/sticky", resolved.Channel, resolved.Reason)
+	}
+}
+
+func TestInfoGroupCanEscalate(t *testing.T) {
+	f := &fakeJev{resp: routeAnswer(0.05, 0.9)}
+	r := newTestRouter(f)
+
+	first := r.Route(context.Background(), loadWebhook(t, "firing-warning.json"))
+	if first.Channel != Info {
+		t.Fatalf("first channel = %s, want info", first.Channel)
+	}
+
+	// An info group is re-asked on every firing notification.
+	f.resp = routeAnswer(0.95, 0.9)
+	update := r.Route(context.Background(), loadWebhook(t, "firing-warning.json"))
+	if update.Channel != Urgent || update.Reason != ReasonJev {
+		t.Errorf("update = %s/%s, want urgent/jev", update.Channel, update.Reason)
+	}
+	if f.calls != 2 {
+		t.Errorf("Jev called %d times, want 2", f.calls)
+	}
+}
+
 func TestResolvedUnknownGroup(t *testing.T) {
 	tests := []struct {
 		name   string

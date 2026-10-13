@@ -28,6 +28,8 @@ For each firing notification, reflex:
 | HTTP error, bad response | label rule | `fallback_error` |
 | `JEV_API_KEY` not set | label rule | `fallback_no_key` |
 
+Groups only escalate. Once a group has gone urgent, later firing notifications for it (new alerts joining the group, repeats) go to urgent without asking Jev again (`escalated`). A group in info is re-asked each time, so it can still move up.
+
 Resolved notifications go to whichever channel the group's firing notification used (`sticky`). reflex keeps that mapping in memory; if it doesn't know the group (for example after a restart, or because another replica handled the firing notification), it uses the label rule (`fallback_unknown_group`).
 
 With two options, Jev's Choice confidence is `2 × max(p) − 1`, so the default `--min-confidence 0.6` means "one option has at least 80%".
