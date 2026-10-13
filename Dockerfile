@@ -14,7 +14,8 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
 
 FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /out/reflex /reflex
-USER nonroot:nonroot
+# Numeric so Kubernetes runAsNonRoot can verify it (distroless "nonroot" is 65532).
+USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/reflex"]
 CMD ["serve"]
