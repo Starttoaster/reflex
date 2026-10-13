@@ -1,0 +1,22 @@
+{
+  "version": "4",
+  "groupKey": "{}/{sendto=\"discord\"}:{job=\"storage\"}",
+  "truncatedAlerts": 0,
+  "status": "firing",
+  "receiver": "reflex",
+  "groupLabels": { "job": "storage" },
+  "commonLabels": { "alertname": "DiskSpaceLow", "job": "storage", "severity": "warning", "sendto": "discord", "instance_name": "nas-01" },
+  "commonAnnotations": { "title": "nas-01 disk /tank is 85% full" },
+  "externalURL": "http://alertmanager.example.com",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": { "alertname": "DiskSpaceLow", "job": "storage", "severity": "warning", "sendto": "discord", "instance_name": "nas-01", "mountpoint": "/tank" },
+      "annotations": { "title": "nas-01 disk /tank is 85% full", "description": "Filesystem /tank on nas-01 (192.168.77.10) has 15% space left. At the current rate it fills in about 9 days." },
+      "startsAt": "2030-01-15T08:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus.example.com/graph?g0.expr=disk",
+      "fingerprint": "c3d4e5f607182930"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+/reflex
+/dist/
+*.out
+.env
+/.idea/

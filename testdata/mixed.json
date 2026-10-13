@@ -1,0 +1,29 @@
+{
+  "version": "4",
+  "groupKey": "{}/{sendto=\"discord\"}:{job=\"backup\"}",
+  "truncatedAlerts": 0,
+  "status": "firing",
+  "receiver": "reflex",
+  "groupLabels": { "job": "backup" },
+  "commonLabels": { "job": "backup", "sendto": "discord" },
+  "commonAnnotations": {},
+  "externalURL": "http://alertmanager.example.com",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": { "alertname": "BackupFailed", "job": "backup", "severity": "warning", "sendto": "discord", "host": "db-01" },
+      "annotations": { "title": "Nightly backup of db-01 failed", "description": "The backup job exited with status 1.\nLast success was 2 days ago." },
+      "startsAt": "2030-01-15T03:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "fingerprint": "d4e5f60718293041"
+    },
+    {
+      "status": "resolved",
+      "labels": { "alertname": "BackupSlow", "job": "backup", "severity": "info", "sendto": "discord", "host": "db-02" },
+      "annotations": { "summary": "Backup of db-02 took over an hour" },
+      "startsAt": "2030-01-15T02:00:00Z",
+      "endsAt": "2030-01-15T04:00:00Z",
+      "fingerprint": "e5f6071829304152"
+    }
+  ]
+}
