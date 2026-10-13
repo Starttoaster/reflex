@@ -1,7 +1,7 @@
 # reflex
 
 > [!WARNING]
-> **This is a lab project.** It's an experiment with Jev, which is itself in early access, and a way to learn Go and cobra. Expect breaking changes to flags, config and behaviour without notice, and don't rely on it as your only path for critical alerts.
+> **This is a lab project.** It's an experiment with Jev, which is itself in early access. Expect breaking changes to flags, config and behaviour without notice, and don't rely on it as your only path for critical alerts.
 
 reflex is an [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/) webhook receiver that sends each alert group to one of two Discord channels:
 
