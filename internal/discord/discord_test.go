@@ -42,8 +42,8 @@ func TestFormat(t *testing.T) {
 		{
 			file:  "firing-critical.json",
 			title: "[FIRING:2] HostDown",
-			desc: "**web-01 is down**\nnode-exporter on web-01 (10.20.30.41) has not responded to scrapes for 5 minutes.\n\n" +
-				"**web-02 is down**\nnode-exporter on web-02 (10.20.30.42) has not responded to scrapes for 5 minutes.",
+			desc: "🔴 **web-01 is down**\nnode-exporter on web-01 (10.20.30.41) has not responded to scrapes for 5 minutes.\n\n" +
+				"🔴 **web-02 is down**\nnode-exporter on web-02 (10.20.30.42) has not responded to scrapes for 5 minutes.",
 			color:     colorFiring,
 			footer:    "routed by Jev (p=0.93)",
 			hasFooter: true,
@@ -51,16 +51,15 @@ func TestFormat(t *testing.T) {
 		{
 			file:  "resolved-critical.json",
 			title: "[RESOLVED] HostDown",
-			desc: "~~web-01 is down~~\n~~node-exporter on web-01 (10.20.30.41) has not responded to scrapes for 5 minutes.~~\n\n" +
-				"~~web-02 is down~~\n~~node-exporter on web-02 (10.20.30.42) has not responded to scrapes for 5 minutes.~~",
+			desc:  "✅ ~~web-01 is down~~ (resolved)\n✅ ~~web-02 is down~~ (resolved)",
 			color: colorResolved,
 		},
 		{
-			// Firing alerts first; a multi-line resolved alert is struck through per line.
+			// Firing alerts first, then resolved ones by title only.
 			file:  "mixed.json",
 			title: "[FIRING:1] BackupFailed",
-			desc: "**Nightly backup of db-01 failed**\nThe backup job exited with status 1.\nLast success was 2 days ago.\n\n" +
-				"~~BackupSlow on db-02~~\n~~Backup of db-02 took over an hour~~",
+			desc: "🔴 **Nightly backup of db-01 failed**\nThe backup job exited with status 1.\nLast success was 2 days ago.\n\n" +
+				"✅ ~~BackupSlow on db-02~~ (resolved)",
 			color:     colorFiring,
 			footer:    "fallback (Jev timeout): severity=warning",
 			hasFooter: true,
@@ -123,7 +122,7 @@ func TestTruncation(t *testing.T) {
 		if n := utf8.RuneCountInString(desc); n > MaxDescription {
 			t.Errorf("description has %d characters, limit %d", n, MaxDescription)
 		}
-		if !strings.HasPrefix(desc, "**nas-01 disk /tank is 85% full**") || !strings.HasSuffix(desc, "…") {
+		if !strings.HasPrefix(desc, "🔴 **nas-01 disk /tank is 85% full**") || !strings.HasSuffix(desc, "…") {
 			t.Errorf("unexpected truncation: starts %q, ends %q", desc[:40], desc[len(desc)-10:])
 		}
 	})
@@ -141,7 +140,7 @@ func TestTruncation(t *testing.T) {
 		if n := utf8.RuneCountInString(desc); n > MaxDescription {
 			t.Errorf("description has %d characters, limit %d", n, MaxDescription)
 		}
-		shown := strings.Count(desc, "**disk full**")
+		shown := strings.Count(desc, "🔴 **disk full**")
 		if !strings.HasSuffix(desc, "…and "+itoa(100-shown)+" more") {
 			t.Errorf("showed %d alerts but ending is %q", shown, desc[len(desc)-20:])
 		}
