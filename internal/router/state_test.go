@@ -72,6 +72,26 @@ func TestBuildState(t *testing.T) {
 	}
 }
 
+func TestBuildStateCommonLabels(t *testing.T) {
+	w := loadWebhook(t, "firing-warning.json")
+	w.CommonLabels["namespace"] = "storage"
+	w.CommonLabels["peer"] = "192.168.77.20"
+	w.CommonLabels["sendto"] = "discord"
+
+	st := BuildState(w, ipScrubber(t, "sendto"), testNow)
+	want := map[string]string{"namespace": "storage", "peer": scrub.Redacted}
+	if len(st.CommonLabels) != len(want) {
+		// job is a group label, alertname and severity have their own fields,
+		// instance_name is a host and sendto is dropped by the scrubber.
+		t.Fatalf("CommonLabels = %v, want %v", st.CommonLabels, want)
+	}
+	for k, v := range want {
+		if st.CommonLabels[k] != v {
+			t.Errorf("CommonLabels[%q] = %q, want %q", k, st.CommonLabels[k], v)
+		}
+	}
+}
+
 func TestBuildStateDropsHostLabel(t *testing.T) {
 	st := BuildState(loadWebhook(t, "firing-critical.json"), ipScrubber(t, "instance_name"), testNow)
 	if len(st.AffectedHosts) != 0 || st.Alerts[0].Host != "" {

@@ -14,7 +14,7 @@ It decides by asking [Jev](https://docs.typesafe.ai), TypeSafe's System One mode
 
 For each firing notification, reflex:
 
-1. Builds a structured summary of the group: alertname, severity, each alert's `title` and `description` annotations, how long each alert has been firing, which hosts are affected, and how many alerts are firing or resolved.
+1. Builds a structured summary of the group: alertname, severity, the labels all its alerts share (such as `namespace` or `job`), each alert's `title` and `description` annotations, how long each alert has been firing, which hosts are affected, and how many alerts are firing or resolved.
 2. Redacts private IPv4 addresses (and any patterns or labels you configure) from that summary.
 3. Asks Jev to choose `page now` or `informational`, plus a 0–4 urgency score that is only logged.
 4. Picks the channel:
@@ -109,7 +109,7 @@ The structure is fixed: one choice between `page now` and `informational`, and a
 
 ### Privacy
 
-Alert content is sent to TypeSafe's API. Only the summary described above is sent, after scrubbing; labels other than alertname, severity, group labels and the host are not included. Add `--scrub-pattern` for anything else you consider sensitive, such as internal domain names, and `--scrub-label` to leave host names out.
+Alert content is sent to TypeSafe's API. Only the summary described above is sent, after scrubbing: alertname, severity, the group's common labels, each alert's host, title and description. Labels that differ between alerts are not included. Add `--scrub-pattern` for anything else you consider sensitive, such as internal domain names, and `--scrub-label` to leave out labels such as host names or routing-only labels like `sendto`.
 
 ## Alertmanager configuration
 
