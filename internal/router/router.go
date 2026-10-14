@@ -34,6 +34,7 @@ const (
 	ReasonFallbackLowConfidence Reason = "fallback_low_confidence"
 	ReasonFallbackNoKey         Reason = "fallback_no_key"
 	ReasonSticky                Reason = "sticky"
+	ReasonEscalated             Reason = "escalated"
 	ReasonFallbackUnknownGroup  Reason = "fallback_unknown_group"
 )
 
@@ -77,6 +78,8 @@ func (d Decision) Footer() string {
 		return fmt.Sprintf("routed by Jev (p=%.2f)", d.PageProbability)
 	case ReasonSticky:
 		return "resolved: same channel as firing"
+	case ReasonEscalated:
+		return "still urgent: escalated earlier"
 	default:
 		return fmt.Sprintf("fallback (%s): severity=%s", fallbackCause(d.Reason), orNone(d.Severity))
 	}
@@ -130,10 +133,19 @@ type Router struct {
 }
 
 // Route decides where w goes and remembers firing decisions so the
-// matching resolved notification lands in the same channel.
+// matching resolved notification lands in the same channel. A group only
+// escalates: once it has gone urgent, later firing notifications for it
+// (new alerts joining, repeats) stay urgent without asking Jev again, while
+// a group in info is re-asked and can still move up.
 func (r *Router) Route(ctx context.Context, w *alertmanager.Webhook) Decision {
 	if w.Status == alertmanager.StatusResolved {
 		return r.routeResolved(w)
+	}
+	if r.Sticky != nil && w.GroupKey != "" {
+		if ch, ok := r.Sticky.Get(w.GroupKey); ok && ch == Urgent {
+			r.Sticky.Set(w.GroupKey, Urgent)
+			return Decision{Channel: Urgent, Reason: ReasonEscalated, Severity: w.Severity()}
+		}
 	}
 	d := r.classify(ctx, w)
 	if r.Sticky != nil && w.GroupKey != "" {
