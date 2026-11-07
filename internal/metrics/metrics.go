@@ -15,6 +15,9 @@ type Metrics struct {
 	JevLatency        prometheus.Histogram
 	DiscordFailures   *prometheus.CounterVec
 	InvalidPayloads   prometheus.Counter
+	Investigations    *prometheus.CounterVec
+	InvestigationTime prometheus.Histogram
+	InvestigationToks prometheus.Counter
 }
 
 // New registers reflex's metrics, plus Go and process metrics, on a fresh registry.
@@ -46,6 +49,19 @@ func New() *Metrics {
 			Name: "reflex_invalid_payloads_total",
 			Help: "Webhook requests rejected because the body could not be parsed.",
 		}),
+		Investigations: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "reflex_investigations_total",
+			Help: "Claude investigations, by outcome: started, skipped_duplicate, skipped_busy, succeeded, failed.",
+		}, []string{"outcome"}),
+		InvestigationTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "reflex_investigation_duration_seconds",
+			Help:    "Duration of finished Claude investigations, successful or not.",
+			Buckets: []float64{5, 10, 20, 30, 60, 90, 120, 180, 300, 600},
+		}),
+		InvestigationToks: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "reflex_investigation_tokens_total",
+			Help: "Billable Anthropic tokens spent on investigations, cache reads included.",
+		}),
 	}
 	m.Registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -56,6 +72,9 @@ func New() *Metrics {
 		m.JevLatency,
 		m.DiscordFailures,
 		m.InvalidPayloads,
+		m.Investigations,
+		m.InvestigationTime,
+		m.InvestigationToks,
 	)
 	return m
 }

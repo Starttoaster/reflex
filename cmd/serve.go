@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/starttoaster/reflex/internal/discord"
+	"github.com/starttoaster/reflex/internal/investigate"
 	"github.com/starttoaster/reflex/internal/metrics"
 	"github.com/starttoaster/reflex/internal/router"
 	"github.com/starttoaster/reflex/internal/server"
@@ -21,6 +22,7 @@ import (
 func newServeCommand() *cobra.Command {
 	var (
 		opts        routingOptions
+		iopts       investigateOptions
 		listen      string
 		stickyTTL   time.Duration
 		sendTimeout time.Duration
@@ -36,10 +38,15 @@ func newServeCommand() *cobra.Command {
 
 Environment: DISCORD_URGENT_WEBHOOK and DISCORD_INFO_WEBHOOK are required.
 JEV_API_KEY is optional; without it every notification is routed by labels.
+ANTHROPIC_API_KEY together with --grafana-mcp-url turns on Claude
+investigations of the groups Jev judges not self-explanatory.
 Each flag can also be set with the variable shown in its description.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.validate(); err != nil {
+				return err
+			}
+			if err := iopts.validate(); err != nil {
 				return err
 			}
 			log, err := opts.logger()
@@ -61,13 +68,41 @@ Each flag can also be set with the variable shown in its description.`,
 				log.Warn("JEV_API_KEY is not set; routing every notification by labels")
 			}
 
+			sender := &discord.Client{HTTPClient: &http.Client{}}
 			srv := &server.Server{
 				Router:      rt,
-				Sender:      &discord.Client{HTTPClient: &http.Client{}},
+				Sender:      sender,
 				Webhooks:    webhooks,
 				Metrics:     metrics.New(),
 				Log:         log,
 				SendTimeout: sendTimeout,
+			}
+			var inv *investigate.Investigator
+			agent := iopts.newAgent(rt.Config.Questions.Context, log)
+			switch {
+			case agent == nil:
+				if iopts.grafanaMCPURL != "" || os.Getenv(envAnthropicAPIKey) != "" {
+					log.Warn("investigations are off: set both --grafana-mcp-url and " + envAnthropicAPIKey)
+				}
+			case rt.Jev == nil:
+				log.Warn("investigations are off: Jev decides which groups to investigate, and JEV_API_KEY is not set")
+			case !rt.Config.Questions.InvestigateEnabled():
+				log.Info("investigations are off: investigate.enabled is false in the questions file")
+			default:
+				rt.Config.Investigate = true
+				inv = investigate.New(investigate.Config{
+					Runner:      agent,
+					Sender:      sender,
+					Metrics:     srv.Metrics,
+					Log:         log,
+					Concurrency: iopts.concurrency,
+					Timeout:     iopts.timeout,
+					SendTimeout: sendTimeout,
+					DedupeTTL:   stickyTTL,
+				})
+				srv.Investigator = inv
+				log.Info("investigations on", "model", iopts.model, "effort", iopts.effort,
+					"threshold", opts.investigateThreshold, "concurrency", iopts.concurrency)
 			}
 			httpSrv := &http.Server{
 				Addr:              listen,
@@ -97,6 +132,11 @@ Each flag can also be set with the variable shown in its description.`,
 			if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 				return err
 			}
+			if inv != nil {
+				if err := inv.Close(shutdownCtx); err != nil {
+					log.Warn("investigations still running at shutdown", "err", err)
+				}
+			}
 			if err := <-errCh; !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
@@ -109,6 +149,8 @@ Each flag can also be set with the variable shown in its description.`,
 	fs.DurationVar(&sendTimeout, "send-timeout", 10*time.Second, "time limit for each Discord delivery, including one rate-limit retry")
 	opts.addFlags(fs)
 	opts.addLogFlags(fs)
+	iopts.addFlags(fs)
+	iopts.addServeFlags(fs)
 	describeEnv(c)
 	return c
 }

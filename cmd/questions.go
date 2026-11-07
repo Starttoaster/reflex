@@ -25,6 +25,11 @@ Fields:
   urgency.enabled         ask for a logged-only urgency score (default true)
   urgency.instructions    the urgency question
   urgency.levels          2 to 10 levels, least to most urgent
+  investigate.enabled     ask whether to investigate with Claude (default true; only
+                          asked when investigations are configured)
+  investigate.instructions      the "investigate or self-explanatory?" question
+  investigate.investigate       what deserves an investigation
+  investigate.self_explanatory  what does not
 
 Empty or missing fields use the defaults.`,
 		Args: cobra.NoArgs,

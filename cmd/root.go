@@ -15,15 +15,18 @@ alert group should page someone now or is informational, then posts it to the
 matching Discord webhook. If Jev is slow, unavailable or unsure, it falls back
 to label routing: severity=critical is urgent, everything else is informational.
 
+When Jev judges an alert group not self-explanatory, reflex can also have
+Claude investigate it against Grafana and post the findings under the alert.
+
 Flags can also be set with environment variables (see each command's help).
-Secrets are read from the environment only: JEV_API_KEY, DISCORD_URGENT_WEBHOOK
-and DISCORD_INFO_WEBHOOK.`,
+Secrets are read from the environment only: JEV_API_KEY, ANTHROPIC_API_KEY,
+DISCORD_URGENT_WEBHOOK and DISCORD_INFO_WEBHOOK.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			return applyEnv(cmd.Flags())
 		},
 	}
-	root.AddCommand(newServeCommand(), newClassifyCommand(), newQuestionsCommand(), newVersionCommand())
+	root.AddCommand(newServeCommand(), newClassifyCommand(), newInvestigateCommand(), newQuestionsCommand(), newVersionCommand())
 	return root
 }

@@ -26,10 +26,13 @@ const (
 	MaxFooter      = 2048
 )
 
-// Embed colours, matching Alertmanager's built-in Discord integration.
+// Embed colours. Firing and resolved match Alertmanager's built-in Discord
+// integration.
 const (
-	colorFiring   = 0x992D22
-	colorResolved = 0x2ECC71
+	colorFiring              = 0x992D22
+	colorResolved            = 0x2ECC71
+	colorInvestigation       = 0x3498DB
+	colorInvestigationFailed = 0x95A5A6
 )
 
 // Message is a Discord webhook execute body.
@@ -84,6 +87,24 @@ func Format(w *alertmanager.Webhook, footer string) Message {
 	e := Embed{
 		Title:       truncate(title, MaxTitle),
 		Description: joinWithin(pieces, MaxDescription),
+		Color:       color,
+	}
+	if footer != "" {
+		e.Footer = &Footer{Text: truncate(footer, MaxFooter)}
+	}
+	return Message{Embeds: []Embed{e}, AllowedMentions: AllowedMentions{Parse: []string{}}}
+}
+
+// FormatInvestigation builds the follow-up message carrying an investigation
+// of w. When failed is true, body explains why there is no investigation.
+func FormatInvestigation(w *alertmanager.Webhook, body, footer string, failed bool) Message {
+	color := colorInvestigation
+	if failed {
+		color = colorInvestigationFailed
+	}
+	e := Embed{
+		Title:       truncate("🔎 Investigation: "+w.AlertName(), MaxTitle),
+		Description: truncate(body, MaxDescription),
 		Color:       color,
 	}
 	if footer != "" {

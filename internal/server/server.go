@@ -23,6 +23,12 @@ type Sender interface {
 	Send(ctx context.Context, webhookURL string, msg discord.Message) error
 }
 
+// Investigator runs background investigations of alert groups.
+type Investigator interface {
+	Start(w *alertmanager.Webhook, webhookURL string) bool
+	Forget(groupKey string)
+}
+
 // Server handles Alertmanager webhooks.
 type Server struct {
 	Router   *router.Router
@@ -32,6 +38,9 @@ type Server struct {
 	Log      *slog.Logger
 	// SendTimeout bounds each Discord delivery.
 	SendTimeout time.Duration
+	// Investigator, if set, investigates groups Jev flags, after the alert
+	// itself has been delivered.
+	Investigator Investigator
 }
 
 // Handler returns the HTTP routes.
@@ -73,6 +82,14 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "discord send failed", http.StatusBadGateway)
 		return
 	}
+	if s.Investigator != nil {
+		switch {
+		case hook.Status == alertmanager.StatusResolved:
+			s.Investigator.Forget(hook.GroupKey)
+		case d.Investigate:
+			s.Investigator.Start(hook, s.Webhooks[d.Channel])
+		}
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -97,6 +114,10 @@ func (s *Server) logDecision(hook *alertmanager.Webhook, d router.Decision) {
 	}
 	if d.Urgency != nil {
 		attrs = append(attrs, "urgency", *d.Urgency)
+	}
+	if d.InvestigateProbability != nil {
+		attrs = append(attrs, "investigate", d.Investigate, "p_investigate", *d.InvestigateProbability,
+			"investigate_confidence", d.InvestigateConfidence)
 	}
 	if d.Err != nil {
 		attrs = append(attrs, "err", d.Err)
