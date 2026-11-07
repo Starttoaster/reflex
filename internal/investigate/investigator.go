@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ const (
 	OutcomeStarted          = "started"
 	OutcomeSkippedDuplicate = "skipped_duplicate"
 	OutcomeSkippedBusy      = "skipped_busy"
+	OutcomeSkippedRateLimit = "skipped_rate_limited"
 	OutcomeSucceeded        = "succeeded"
 	OutcomeFailed           = "failed"
 )
@@ -46,6 +48,9 @@ type Config struct {
 	SendTimeout time.Duration
 	// DedupeTTL is how long a group is remembered as investigated.
 	DedupeTTL time.Duration
+	// MaxPerHour caps investigations started in any rolling hour; more are
+	// skipped. Zero means no cap.
+	MaxPerHour int
 }
 
 // Investigator runs investigations in the background, at most once per alert
@@ -60,6 +65,8 @@ type Investigator struct {
 
 	mu   sync.Mutex
 	seen map[string]time.Time
+	// started holds the start times of investigations in the last hour.
+	started []time.Time
 }
 
 // New returns an Investigator ready to Start investigations.
@@ -91,6 +98,14 @@ func (i *Investigator) Start(w *alertmanager.Webhook, webhookURL string) bool {
 		i.count(OutcomeSkippedDuplicate)
 		return false
 	}
+	i.started = slices.DeleteFunc(i.started, func(at time.Time) bool { return now.Sub(at) >= time.Hour })
+	if i.cfg.MaxPerHour > 0 && len(i.started) >= i.cfg.MaxPerHour {
+		i.mu.Unlock()
+		i.count(OutcomeSkippedRateLimit)
+		i.cfg.Log.Warn("investigation skipped: hourly limit reached", "group_key", w.GroupKey,
+			"alertname", w.AlertName(), "max_per_hour", i.cfg.MaxPerHour)
+		return false
+	}
 	select {
 	case i.sem <- struct{}{}:
 	default:
@@ -100,6 +115,7 @@ func (i *Investigator) Start(w *alertmanager.Webhook, webhookURL string) bool {
 		return false
 	}
 	i.seen[w.GroupKey] = now
+	i.started = append(i.started, now)
 	i.wg.Add(1)
 	i.mu.Unlock()
 

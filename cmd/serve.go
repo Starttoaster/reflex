@@ -99,10 +99,12 @@ Each flag can also be set with the variable shown in its description.`,
 					Timeout:     iopts.timeout,
 					SendTimeout: sendTimeout,
 					DedupeTTL:   stickyTTL,
+					MaxPerHour:  iopts.maxPerHour,
 				})
 				srv.Investigator = inv
 				log.Info("investigations on", "model", iopts.model, "effort", iopts.effort,
-					"threshold", opts.investigateThreshold, "concurrency", iopts.concurrency)
+					"threshold", opts.investigateThreshold, "concurrency", iopts.concurrency,
+					"max_per_hour", iopts.maxPerHour)
 			}
 			httpSrv := &http.Server{
 				Addr:              listen,

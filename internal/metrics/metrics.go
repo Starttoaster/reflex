@@ -51,7 +51,7 @@ func New() *Metrics {
 		}),
 		Investigations: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "reflex_investigations_total",
-			Help: "Claude investigations, by outcome: started, skipped_duplicate, skipped_busy, succeeded, failed.",
+			Help: "Claude investigations, by outcome: started, skipped_duplicate, skipped_busy, skipped_rate_limited, succeeded, failed.",
 		}, []string{"outcome"}),
 		InvestigationTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "reflex_investigation_duration_seconds",

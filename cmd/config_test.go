@@ -51,6 +51,7 @@ func TestApplyEnvInvestigate(t *testing.T) {
 	t.Setenv("REFLEX_INVESTIGATE_EFFORT", "high")
 	t.Setenv("REFLEX_GRAFANA_MCP_URL", "http://mcp-grafana:8000/mcp")
 	t.Setenv("REFLEX_INVESTIGATE_CONCURRENCY", "4")
+	t.Setenv("REFLEX_MAX_HOURLY_INVESTIGATIONS", "3")
 
 	var o investigateOptions
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
@@ -62,7 +63,8 @@ func TestApplyEnvInvestigate(t *testing.T) {
 	if err := applyEnv(fs); err != nil {
 		t.Fatal(err)
 	}
-	if o.model != "claude-sonnet-5-5" || o.effort != "high" || o.grafanaMCPURL != "http://mcp-grafana:8000/mcp" || o.concurrency != 4 {
+	if o.model != "claude-sonnet-5-5" || o.effort != "high" || o.grafanaMCPURL != "http://mcp-grafana:8000/mcp" ||
+		o.concurrency != 4 || o.maxPerHour != 3 {
 		t.Errorf("env not applied: %+v", o)
 	}
 	if err := o.validate(); err != nil {

@@ -38,6 +38,7 @@ type investigateOptions struct {
 	maxIterations int
 	maxTokens     int64
 	concurrency   int
+	maxPerHour    int
 }
 
 func (o *investigateOptions) addFlags(fs *pflag.FlagSet) {
@@ -52,11 +53,15 @@ func (o *investigateOptions) addFlags(fs *pflag.FlagSet) {
 // addServeFlags registers the flags only serve uses.
 func (o *investigateOptions) addServeFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&o.concurrency, "investigate-concurrency", 2, "investigations that may run at once; more are skipped")
+	fs.IntVar(&o.maxPerHour, "max-hourly-investigations", 10, "investigations that may start in any rolling hour; more are skipped (0 for no limit)")
 }
 
 func (o *investigateOptions) validate() error {
 	if !slices.Contains(efforts, o.effort) {
 		return fmt.Errorf("--investigate-effort must be one of %v, got %q", efforts, o.effort)
+	}
+	if o.maxPerHour < 0 {
+		return errors.New("--max-hourly-investigations must not be negative")
 	}
 	if o.timeout <= 0 || o.maxIterations <= 0 || o.maxTokens <= 0 {
 		return errors.New("--investigate-timeout, --investigate-max-iterations and --investigate-max-tokens must be positive")

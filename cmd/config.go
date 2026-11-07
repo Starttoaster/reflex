@@ -73,6 +73,7 @@ var envNames = map[string]string{
 	"investigate-max-iterations": "REFLEX_INVESTIGATE_MAX_ITERATIONS",
 	"investigate-max-tokens":     "REFLEX_INVESTIGATE_MAX_TOKENS",
 	"investigate-concurrency":    "REFLEX_INVESTIGATE_CONCURRENCY",
+	"max-hourly-investigations":  "REFLEX_MAX_HOURLY_INVESTIGATIONS",
 	"min-confidence":             "REFLEX_MIN_CONFIDENCE",
 	"jev-timeout":                "REFLEX_JEV_TIMEOUT",
 	"jev-endpoint":               "JEV_ENDPOINT",

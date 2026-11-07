@@ -42,7 +42,7 @@ When investigations are on, the same Jev request carries a second Choice: is it 
 2. Claude queries Grafana in a bounded tool-use loop (`--investigate-max-iterations`, `--investigate-max-tokens`, `--investigate-timeout`).
 3. reflex posts the findings as a `🔎 Investigation: <alertname>` embed to the channel the alert went to. The footer shows the model, tool calls and tokens spent, and anything that cut the run short. If the investigation fails, a short embed says why.
 
-The alert itself never waits on, or depends on, an investigation. Each group is investigated at most once until it resolves (or `--sticky-ttl` passes), and at most `--investigate-concurrency` run at once; more are skipped. Investigations need Jev, so they are off without `JEV_API_KEY`, and also without `ANTHROPIC_API_KEY` or `--grafana-mcp-url`. Fallback decisions never investigate.
+The alert itself never waits on, or depends on, an investigation. Each group is investigated at most once until it resolves (or `--sticky-ttl` passes), at most `--investigate-concurrency` run at once, and at most `--max-hourly-investigations` (default 10) start in any rolling hour; more are skipped and counted in `reflex_investigations_total`. Investigations need Jev, so they are off without `JEV_API_KEY`, and also without `ANTHROPIC_API_KEY` or `--grafana-mcp-url`. Fallback decisions never investigate.
 
 ## Discord messages
 
@@ -109,6 +109,7 @@ Secrets are read from the environment only: `JEV_API_KEY`, `ANTHROPIC_API_KEY`, 
 | `--investigate-max-iterations` | `REFLEX_INVESTIGATE_MAX_ITERATIONS` | `15` | model requests per investigation |
 | `--investigate-max-tokens` | `REFLEX_INVESTIGATE_MAX_TOKENS` | `300000` | billable tokens per investigation |
 | `--investigate-concurrency` | `REFLEX_INVESTIGATE_CONCURRENCY` | `2` | investigations at once; more are skipped (serve) |
+| `--max-hourly-investigations` | `REFLEX_MAX_HOURLY_INVESTIGATIONS` | `10` | investigations started per rolling hour; more are skipped, `0` for no limit (serve) |
 
 ### Customising the questions
 
@@ -166,7 +167,7 @@ With the Prometheus Operator, use a `webhookConfigs` receiver in an `Alertmanage
 | `reflex_jev_request_duration_seconds` | |
 | `reflex_discord_send_failures_total` | `channel` (`investigation` for investigation posts) |
 | `reflex_invalid_payloads_total` | |
-| `reflex_investigations_total` | `outcome`: `started`, `skipped_duplicate`, `skipped_busy`, `succeeded`, `failed` |
+| `reflex_investigations_total` | `outcome`: `started`, `skipped_duplicate`, `skipped_busy`, `skipped_rate_limited`, `succeeded`, `failed` |
 | `reflex_investigation_duration_seconds` | |
 | `reflex_investigation_tokens_total` | |
 

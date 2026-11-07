@@ -138,6 +138,28 @@ func TestInvestigatorDedupeAndBusy(t *testing.T) {
 	}
 }
 
+func TestInvestigatorHourlyLimit(t *testing.T) {
+	inv, m := newTestInvestigator(&fakeRunner{}, &fakeSender{}, 10)
+	inv.cfg.MaxPerHour = 2
+	now := time.Now()
+	inv.now = func() time.Time { return now }
+
+	if !inv.Start(hook("g1"), "x") || !inv.Start(hook("g2"), "x") {
+		t.Fatal("refused within the limit")
+	}
+	if inv.Start(hook("g3"), "x") {
+		t.Error("started past the hourly limit")
+	}
+	now = now.Add(time.Hour)
+	if !inv.Start(hook("g3"), "x") {
+		t.Error("limit did not roll over after an hour")
+	}
+	closeInvestigator(t, inv)
+	if v := testutil.ToFloat64(m.Investigations.WithLabelValues(OutcomeSkippedRateLimit)); v != 1 {
+		t.Errorf("skipped_rate_limited = %v", v)
+	}
+}
+
 func TestInvestigatorForgetAndExpiry(t *testing.T) {
 	inv, _ := newTestInvestigator(&fakeRunner{}, &fakeSender{}, 4)
 	now := time.Now()
