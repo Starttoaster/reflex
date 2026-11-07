@@ -34,6 +34,16 @@ Resolved notifications go to whichever channel the group's firing notification u
 
 With two options, Jev's Choice confidence is `2 × max(p) − 1`, so the default `--min-confidence 0.6` means "one option has at least 80%".
 
+## Investigations
+
+When investigations are on, the same Jev request carries a second Choice: is it clear from the alert alone what is wrong and what to do (`self-explanatory`), or would looking at metrics and logs help (`investigate`)? If Jev answers with confidence ≥ `--min-confidence` and P(investigate) ≥ `--investigate-threshold`, reflex delivers the alert as usual and then, in the background, has Claude investigate it:
+
+1. reflex connects to your [mcp-grafana](https://github.com/grafana/mcp-grafana) server and offers Claude its read-only tools only (Prometheus, Loki, dashboards, alert rules). A tool outside that allowlist is never offered and a call to one is refused, but run mcp-grafana with `--disable-write` as well.
+2. Claude queries Grafana in a bounded tool-use loop (`--investigate-max-iterations`, `--investigate-max-tokens`, `--investigate-timeout`).
+3. reflex posts the findings as a `🔎 Investigation: <alertname>` embed to the channel the alert went to. The footer shows the model, tool calls and tokens spent, and anything that cut the run short. If the investigation fails, a short embed says why.
+
+The alert itself never waits on, or depends on, an investigation. Each group is investigated at most once until it resolves (or `--sticky-ttl` passes), at most `--investigate-concurrency` run at once, and at most `--max-hourly-investigations` (default 10) start in any rolling hour; more are skipped and counted in `reflex_investigations_total`. Investigations need Jev, so they are off without `JEV_API_KEY`, and also without `ANTHROPIC_API_KEY` or `--grafana-mcp-url`. Fallback decisions never investigate.
+
 ## Discord messages
 
 Messages are embeds titled `[FIRING:n] <alertname>` or `[RESOLVED] <alertname>`. The body lists each firing alert as 🔴 and a bold title with its description, then each resolved alert as a ✅ struck-through title. The footer shows the routing reason, for example `routed by Jev (p=0.93)` or `fallback (Jev timeout): severity=critical`. Titles and bodies are truncated to Discord's limits, dropping whole alerts and noting how many were left out. Mentions in alert text never ping anyone.
@@ -44,7 +54,8 @@ Messages are embeds titled `[FIRING:n] <alertname>` or `[RESOLVED] <alertname>`.
 export JEV_API_KEY=...                 # optional; without it reflex routes by labels only
 export DISCORD_URGENT_WEBHOOK=https://discord.com/api/webhooks/...
 export DISCORD_INFO_WEBHOOK=https://discord.com/api/webhooks/...
-reflex serve
+export ANTHROPIC_API_KEY=...            # optional; with --grafana-mcp-url turns on investigations
+reflex serve --grafana-mcp-url http://mcp-grafana.monitoring.svc:8000/mcp
 ```
 
 | Endpoint | Purpose |
@@ -64,9 +75,15 @@ reflex classify -f payload.json
 reflex classify --threshold 0.9 -f - < payload.json
 ```
 
+`classify` always asks the investigate question too and prints its answer. To try an investigation itself without Jev or Discord, use `reflex investigate`, which spends Anthropic tokens and prints Claude's findings (`-v` logs each tool call):
+
+```sh
+reflex investigate --grafana-mcp-url http://localhost:8000/mcp -f payload.json
+```
+
 ### Configuration
 
-Secrets are read from the environment only: `JEV_API_KEY`, `DISCORD_URGENT_WEBHOOK` and `DISCORD_INFO_WEBHOOK`. Everything else is a flag, and every flag can also be set with an environment variable. A flag on the command line wins over the environment.
+Secrets are read from the environment only: `JEV_API_KEY`, `ANTHROPIC_API_KEY`, `DISCORD_URGENT_WEBHOOK` and `DISCORD_INFO_WEBHOOK`. Everything else is a flag, and every flag can also be set with an environment variable. A flag on the command line wins over the environment.
 
 | Flag | Environment | Default | |
 | --- | --- | --- | --- |
@@ -84,6 +101,15 @@ Secrets are read from the environment only: `JEV_API_KEY`, `DISCORD_URGENT_WEBHO
 | `--send-timeout` | `REFLEX_SEND_TIMEOUT` | `10s` | time limit per Discord delivery (serve) |
 | `--log-format` | `REFLEX_LOG_FORMAT` | `json` | `json` or `text` (serve) |
 | `--log-level` | `REFLEX_LOG_LEVEL` | `info` | (serve) |
+| `--grafana-mcp-url` | `REFLEX_GRAFANA_MCP_URL` | | mcp-grafana endpoint; investigations are off without it |
+| `--investigate-threshold` | `REFLEX_INVESTIGATE_THRESHOLD` | `0.7` | minimum P(investigate) to investigate |
+| `--investigate-model` | `REFLEX_INVESTIGATE_MODEL` | `claude-opus-5-5` | |
+| `--investigate-effort` | `REFLEX_INVESTIGATE_EFFORT` | `medium` | `low`, `medium`, `high`, `xhigh` or `max` |
+| `--investigate-timeout` | `REFLEX_INVESTIGATE_TIMEOUT` | `10m` | time limit per investigation |
+| `--investigate-max-iterations` | `REFLEX_INVESTIGATE_MAX_ITERATIONS` | `15` | model requests per investigation |
+| `--investigate-max-tokens` | `REFLEX_INVESTIGATE_MAX_TOKENS` | `300000` | billable tokens per investigation |
+| `--investigate-concurrency` | `REFLEX_INVESTIGATE_CONCURRENCY` | `2` | investigations at once; more are skipped (serve) |
+| `--max-hourly-investigations` | `REFLEX_MAX_HOURLY_INVESTIGATIONS` | `10` | investigations started per rolling hour; more are skipped, `0` for no limit (serve) |
 
 ### Customising the questions
 
@@ -105,13 +131,19 @@ route:
 urgency:
   enabled: true            # logged-only score; set false to skip it
   levels: [No action needed, This week, Today, Within the hour, Now]   # 2 to 10, least urgent first
+investigate:
+  enabled: true            # set false to never investigate
+  investigate: Anything touching backups or the NAS, or an alert whose cause isn't obvious.
+  self_explanatory: The alert names the problem and the fix, or it is a brief blip.
 ```
 
-The structure is fixed: one choice between `page now` and `informational`, and an optional urgency score. Unknown keys are rejected, so a typo fails at startup instead of silently using a default. Try a new wording against saved payloads with `reflex classify --questions-file questions.yaml -f payload.json` before deploying it.
+The structure is fixed: one choice between `page now` and `informational`, an optional urgency score, and an optional choice between `investigate` and `self-explanatory`. The `context` is also given to Claude during investigations. Unknown keys are rejected, so a typo fails at startup instead of silently using a default. Try a new wording against saved payloads with `reflex classify --questions-file questions.yaml -f payload.json` before deploying it.
 
 ### Privacy
 
 Alert content is sent to TypeSafe's API. Only the summary described above is sent, after scrubbing: alertname, severity, the group's common labels, each alert's host, title and description. Labels that differ between alerts are not included. Add `--scrub-pattern` for anything else you consider sensitive, such as internal domain names, and `--scrub-label` to leave out labels such as host names or routing-only labels like `sendto`.
+
+Investigations send more to Anthropic's API, and none of it is scrubbed: Claude needs real label values to build queries that match. It receives the group's full labels and annotations, each alert's start time and generator URL, the questions file's `context`, and the results of every Grafana query it runs.
 
 ## Alertmanager configuration
 
@@ -133,16 +165,20 @@ With the Prometheus Operator, use a `webhookConfigs` receiver in an `Alertmanage
 | `reflex_alerts_received_total` | `status` |
 | `reflex_routing_decisions_total` | `channel`, `reason` |
 | `reflex_jev_request_duration_seconds` | |
-| `reflex_discord_send_failures_total` | `channel` |
+| `reflex_discord_send_failures_total` | `channel` (`investigation` for investigation posts) |
 | `reflex_invalid_payloads_total` | |
+| `reflex_investigations_total` | `outcome`: `started`, `skipped_duplicate`, `skipped_busy`, `skipped_rate_limited`, `succeeded`, `failed` |
+| `reflex_investigation_duration_seconds` | |
+| `reflex_investigation_tokens_total` | |
 
-Each decision is logged with `channel`, `reason`, `p_page`, `confidence`, `urgency`, `jev_latency_ms` and `label_channel` (what label routing alone would have chosen).
+Each decision is logged with `channel`, `reason`, `p_page`, `confidence`, `urgency`, `investigate`, `p_investigate`, `jev_latency_ms` and `label_channel` (what label routing alone would have chosen). Each finished investigation is logged with its duration, model, tool calls and tokens.
 
 ## Container image
 
 ```sh
 docker run --rm -p 8080:8080 \
-  -e JEV_API_KEY -e DISCORD_URGENT_WEBHOOK -e DISCORD_INFO_WEBHOOK \
+  -e JEV_API_KEY -e ANTHROPIC_API_KEY -e REFLEX_GRAFANA_MCP_URL \
+  -e DISCORD_URGENT_WEBHOOK -e DISCORD_INFO_WEBHOOK \
   ghcr.io/starttoaster/reflex:<version>
 ```
 

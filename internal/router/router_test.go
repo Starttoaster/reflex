@@ -50,6 +50,16 @@ func routeAnswer(pPage, confidence float64) *jev.Response {
 	}
 }
 
+// withInvestigate adds an investigate answer to resp.
+func withInvestigate(resp *jev.Response, p, confidence float64) *jev.Response {
+	resp.Answers[investigateQuestion] = jev.Answer{
+		Type:          "choice",
+		Probabilities: map[string]float64{optionInvestigate: p, optionSelfExplanatory: 1 - p},
+		Confidence:    confidence,
+	}
+	return resp
+}
+
 func newTestRouter(ev Evaluator) *Router {
 	return &Router{Config: testConfig, Jev: ev, Sticky: NewSticky(time.Hour), Now: func() time.Time { return testNow }}
 }
@@ -360,5 +370,62 @@ func TestFooter(t *testing.T) {
 				t.Errorf("Footer() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestInvestigateDecision(t *testing.T) {
+	tests := []struct {
+		name      string
+		resp      *jev.Response
+		wantP     *float64
+		wantInves bool
+	}{
+		{"confident investigate", withInvestigate(routeAnswer(0.9, 0.9), 0.85, 0.7), new(0.85), true},
+		{"at threshold", withInvestigate(routeAnswer(0.9, 0.9), 0.7, 0.6), new(0.7), true},
+		{"below threshold", withInvestigate(routeAnswer(0.9, 0.9), 0.6, 0.9), new(0.6), false},
+		{"low confidence", withInvestigate(routeAnswer(0.9, 0.9), 0.75, 0.5), new(0.75), false},
+		{"route low confidence still investigates", withInvestigate(routeAnswer(0.7, 0.2), 0.95, 0.9), new(0.95), true},
+		{"no answer", routeAnswer(0.9, 0.9), nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newTestRouter(&fakeJev{resp: tt.resp})
+			r.Config.Investigate = true
+			r.Config.InvestigateThreshold = 0.7
+			d := r.Route(context.Background(), loadWebhook(t, "firing-warning.json"))
+			if d.Investigate != tt.wantInves {
+				t.Errorf("Investigate = %v, want %v", d.Investigate, tt.wantInves)
+			}
+			switch {
+			case tt.wantP == nil && d.InvestigateProbability != nil:
+				t.Errorf("InvestigateProbability = %v, want nil", *d.InvestigateProbability)
+			case tt.wantP != nil && (d.InvestigateProbability == nil || *d.InvestigateProbability != *tt.wantP):
+				t.Errorf("InvestigateProbability = %v, want %v", d.InvestigateProbability, *tt.wantP)
+			}
+		})
+	}
+}
+
+func TestInvestigateQuestionOnlyWhenConfigured(t *testing.T) {
+	for _, configured := range []bool{false, true} {
+		f := &fakeJev{resp: routeAnswer(0.9, 0.9)}
+		r := newTestRouter(f)
+		r.Config.Investigate = configured
+		r.Route(context.Background(), loadWebhook(t, "firing-warning.json"))
+		q, ok := f.last.Questions[investigateQuestion]
+		if ok != configured {
+			t.Errorf("configured=%v: question sent=%v", configured, ok)
+		}
+		if ok && q.Type != "choice" {
+			t.Errorf("investigate question = %+v", q)
+		}
+	}
+}
+
+func TestFallbackNeverInvestigates(t *testing.T) {
+	r := newTestRouter(&fakeJev{err: errors.New("boom")})
+	r.Config.Investigate = true
+	if d := r.Route(context.Background(), loadWebhook(t, "firing-warning.json")); d.Investigate {
+		t.Error("fallback decision investigates")
 	}
 }

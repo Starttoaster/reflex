@@ -19,29 +19,32 @@ import (
 // Secrets are read from the environment only, so they never show up in a
 // process listing.
 const (
-	envJevAPIKey      = "JEV_API_KEY"
-	envUrgentWebhook  = "DISCORD_URGENT_WEBHOOK"
-	envInfoWebhook    = "DISCORD_INFO_WEBHOOK"
-	envScrubSeparator = "\n"
+	envJevAPIKey       = "JEV_API_KEY"
+	envAnthropicAPIKey = "ANTHROPIC_API_KEY"
+	envUrgentWebhook   = "DISCORD_URGENT_WEBHOOK"
+	envInfoWebhook     = "DISCORD_INFO_WEBHOOK"
+	envScrubSeparator  = "\n"
 )
 
 // routingOptions are the flags shared by serve and classify.
 type routingOptions struct {
-	threshold       float64
-	minConfidence   float64
-	jevTimeout      time.Duration
-	jevEndpoint     string
-	jevModel        string
-	scrubPrivateIPs bool
-	scrubPatterns   []string
-	scrubLabels     []string
-	questionsFile   string
-	logFormat       string
-	logLevel        string
+	threshold            float64
+	investigateThreshold float64
+	minConfidence        float64
+	jevTimeout           time.Duration
+	jevEndpoint          string
+	jevModel             string
+	scrubPrivateIPs      bool
+	scrubPatterns        []string
+	scrubLabels          []string
+	questionsFile        string
+	logFormat            string
+	logLevel             string
 }
 
 func (o *routingOptions) addFlags(fs *pflag.FlagSet) {
 	fs.Float64Var(&o.threshold, "threshold", 0.8, "minimum P(page now) to route to the urgent channel")
+	fs.Float64Var(&o.investigateThreshold, "investigate-threshold", 0.7, "minimum P(investigate) to start a Claude investigation")
 	fs.Float64Var(&o.minConfidence, "min-confidence", 0.6, "minimum Jev confidence to trust its answer; below this, route by labels")
 	fs.DurationVar(&o.jevTimeout, "jev-timeout", 1500*time.Millisecond, "time limit for the Jev request")
 	fs.StringVar(&o.jevEndpoint, "jev-endpoint", jev.DefaultEndpoint, "Jev System One endpoint")
@@ -60,20 +63,29 @@ func (o *routingOptions) addLogFlags(fs *pflag.FlagSet) {
 
 // envNames maps flags to the environment variables that set them.
 var envNames = map[string]string{
-	"listen":            "REFLEX_LISTEN",
-	"threshold":         "REFLEX_THRESHOLD",
-	"min-confidence":    "REFLEX_MIN_CONFIDENCE",
-	"jev-timeout":       "REFLEX_JEV_TIMEOUT",
-	"jev-endpoint":      "JEV_ENDPOINT",
-	"jev-model":         "JEV_MODEL",
-	"scrub-private-ips": "REFLEX_SCRUB_PRIVATE_IPS",
-	"scrub-pattern":     "REFLEX_SCRUB_PATTERNS",
-	"scrub-label":       "REFLEX_SCRUB_LABELS",
-	"questions-file":    "REFLEX_QUESTIONS_FILE",
-	"sticky-ttl":        "REFLEX_STICKY_TTL",
-	"send-timeout":      "REFLEX_SEND_TIMEOUT",
-	"log-format":        "REFLEX_LOG_FORMAT",
-	"log-level":         "REFLEX_LOG_LEVEL",
+	"listen":                     "REFLEX_LISTEN",
+	"threshold":                  "REFLEX_THRESHOLD",
+	"investigate-threshold":      "REFLEX_INVESTIGATE_THRESHOLD",
+	"grafana-mcp-url":            "REFLEX_GRAFANA_MCP_URL",
+	"investigate-model":          "REFLEX_INVESTIGATE_MODEL",
+	"investigate-effort":         "REFLEX_INVESTIGATE_EFFORT",
+	"investigate-timeout":        "REFLEX_INVESTIGATE_TIMEOUT",
+	"investigate-max-iterations": "REFLEX_INVESTIGATE_MAX_ITERATIONS",
+	"investigate-max-tokens":     "REFLEX_INVESTIGATE_MAX_TOKENS",
+	"investigate-concurrency":    "REFLEX_INVESTIGATE_CONCURRENCY",
+	"max-hourly-investigations":  "REFLEX_MAX_HOURLY_INVESTIGATIONS",
+	"min-confidence":             "REFLEX_MIN_CONFIDENCE",
+	"jev-timeout":                "REFLEX_JEV_TIMEOUT",
+	"jev-endpoint":               "JEV_ENDPOINT",
+	"jev-model":                  "JEV_MODEL",
+	"scrub-private-ips":          "REFLEX_SCRUB_PRIVATE_IPS",
+	"scrub-pattern":              "REFLEX_SCRUB_PATTERNS",
+	"scrub-label":                "REFLEX_SCRUB_LABELS",
+	"questions-file":             "REFLEX_QUESTIONS_FILE",
+	"sticky-ttl":                 "REFLEX_STICKY_TTL",
+	"send-timeout":               "REFLEX_SEND_TIMEOUT",
+	"log-format":                 "REFLEX_LOG_FORMAT",
+	"log-level":                  "REFLEX_LOG_LEVEL",
 }
 
 // applyEnv sets every flag not given on the command line from its
@@ -106,6 +118,9 @@ func applyEnv(fs *pflag.FlagSet) error {
 func (o *routingOptions) validate() error {
 	if o.threshold < 0 || o.threshold > 1 {
 		return fmt.Errorf("--threshold must be between 0 and 1, got %v", o.threshold)
+	}
+	if o.investigateThreshold < 0 || o.investigateThreshold > 1 {
+		return fmt.Errorf("--investigate-threshold must be between 0 and 1, got %v", o.investigateThreshold)
 	}
 	if o.minConfidence < 0 || o.minConfidence > 1 {
 		return fmt.Errorf("--min-confidence must be between 0 and 1, got %v", o.minConfidence)
@@ -162,6 +177,8 @@ func (o *routingOptions) newRouter(sticky *router.Sticky) (*router.Router, error
 			Timeout:       o.jevTimeout,
 			Model:         o.jevModel,
 			Questions:     questions,
+			// serve and classify turn the investigate question on.
+			InvestigateThreshold: o.investigateThreshold,
 		},
 		Scrubber: scrubber,
 		Sticky:   sticky,

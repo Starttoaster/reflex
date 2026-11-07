@@ -40,10 +40,13 @@ const (
 
 // Question ids and options sent to Jev.
 const (
-	routeQuestion   = "route"
-	urgencyQuestion = "urgency"
-	optionPageNow   = "page now"
-	optionInfo      = "informational"
+	routeQuestion         = "route"
+	urgencyQuestion       = "urgency"
+	investigateQuestion   = "investigate"
+	optionPageNow         = "page now"
+	optionInfo            = "informational"
+	optionInvestigate     = "investigate"
+	optionSelfExplanatory = "self-explanatory"
 )
 
 // Evaluator is the part of the Jev client the router needs.
@@ -61,8 +64,14 @@ type Decision struct {
 	PageProbability float64
 	Confidence      float64
 	Urgency         *float64
-	Model           string
-	JevLatency      time.Duration
+	// Investigate fields are set when Jev answered the investigate question.
+	// Investigate is true when that answer was confident enough and above
+	// the investigate threshold.
+	Investigate            bool
+	InvestigateProbability *float64
+	InvestigateConfidence  float64
+	Model                  string
+	JevLatency             time.Duration
 	// JevCalled is true when a request was sent, whatever its outcome.
 	JevCalled bool
 	Err       error
@@ -121,6 +130,11 @@ type Config struct {
 	Model string
 	// Questions is the wording sent to Jev; empty fields use the defaults.
 	Questions Questions
+	// Investigate adds the investigate question to each request. It is set
+	// when an investigator is configured to act on the answer.
+	Investigate bool
+	// InvestigateThreshold is the minimum P(investigate) to investigate.
+	InvestigateThreshold float64
 }
 
 // Router makes routing decisions. A nil Jev routes every notification by labels.
@@ -184,7 +198,7 @@ func (r *Router) classify(ctx context.Context, w *alertmanager.Webhook) Decision
 	req := jev.Request{
 		State:     state,
 		Model:     r.Config.Model,
-		Questions: q.jevQuestions(),
+		Questions: q.jevQuestions(r.Config.Investigate),
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, r.Config.Timeout)
@@ -237,7 +251,24 @@ func (r *Router) decide(w *alertmanager.Webhook, resp *jev.Response) Decision {
 	if u, ok := resp.Answers[urgencyQuestion]; ok && u.Type == "score" {
 		d.Urgency = &u.Score
 	}
+	r.decideInvestigate(&d, resp)
 	return d
+}
+
+// decideInvestigate reads the investigate answer, if any. It is independent
+// of the route answer: a group can go to info and still be worth a look.
+func (r *Router) decideInvestigate(d *Decision, resp *jev.Response) {
+	ans, ok := resp.Answers[investigateQuestion]
+	if !ok || ans.Type != "choice" {
+		return
+	}
+	p, ok := ans.Probabilities[optionInvestigate]
+	if !ok {
+		return
+	}
+	d.InvestigateProbability = &p
+	d.InvestigateConfidence = ans.Confidence
+	d.Investigate = ans.Confidence >= r.Config.MinConfidence && p >= r.Config.InvestigateThreshold
 }
 
 // LabelChannel is the deterministic rule: severity=critical is urgent,

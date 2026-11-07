@@ -62,11 +62,32 @@ func TestLoadQuestions(t *testing.T) {
 				if q.UrgencyEnabled() {
 					t.Error("urgency still enabled")
 				}
-				if _, ok := q.jevQuestions()[urgencyQuestion]; ok {
+				if _, ok := q.jevQuestions(true)[urgencyQuestion]; ok {
 					t.Error("urgency question still asked")
 				}
 			},
 		},
+		{
+			name: "investigate disabled",
+			yaml: "investigate:\n  enabled: false\n",
+			check: func(t *testing.T, q Questions) {
+				if _, ok := q.jevQuestions(true)[investigateQuestion]; ok {
+					t.Error("investigate question still asked")
+				}
+			},
+		},
+		{
+			name: "investigate wording",
+			yaml: "investigate:\n  investigate: Anything touching the NAS.\n",
+			check: func(t *testing.T, q Questions) {
+				opts := q.jevQuestions(true)[investigateQuestion].Criteria.(map[string]string)
+				if opts[optionInvestigate] != "Anything touching the NAS." ||
+					opts[optionSelfExplanatory] != DefaultQuestions().Investigate.SelfExplanatory {
+					t.Errorf("investigate options = %v", opts)
+				}
+			},
+		},
+		{name: "unknown investigate key", yaml: "investigate:\n  obvious: typo\n", wantErr: "field obvious not found"},
 		{name: "unknown key", yaml: "route:\n  pagenow: typo\n", wantErr: "field pagenow not found"},
 		{name: "one level", yaml: "urgency:\n  levels: [only]\n", wantErr: "2 to 10 entries"},
 		{name: "too many levels", yaml: "urgency:\n  levels: [a, b, c, d, e, f, g, h, i, j, k]\n", wantErr: "2 to 10 entries"},

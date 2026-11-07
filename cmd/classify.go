@@ -48,6 +48,8 @@ ones here; in serve they follow the channel their firing notification used.`,
 			if err != nil {
 				return err
 			}
+			// Ask the investigate question so its answer can be tuned too.
+			rt.Config.Investigate = true
 			return printDecision(cmd.OutOrStdout(), rt.Classify(cmd.Context(), hook), rt.Config.Questions)
 		},
 	}
@@ -89,6 +91,9 @@ func printDecision(w io.Writer, d router.Decision, q router.Questions) error {
 	if d.Urgency != nil {
 		levels := q.Urgency.Levels
 		_, _ = fmt.Fprintf(w, "urgency:       %.2f (0 %q … %d %q)\n", *d.Urgency, levels[0], len(levels)-1, levels[len(levels)-1])
+	}
+	if d.InvestigateProbability != nil {
+		_, _ = fmt.Fprintf(w, "investigate:   %v (p=%.3f, confidence %.3f)\n", d.Investigate, *d.InvestigateProbability, d.InvestigateConfidence)
 	}
 	if d.JevCalled {
 		_, _ = fmt.Fprintf(w, "jev latency:   %s\n", d.JevLatency.Round(time.Millisecond))

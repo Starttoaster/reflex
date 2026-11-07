@@ -15,7 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/starttoaster/reflex/internal/alertmanager"
 	"github.com/starttoaster/reflex/internal/discord"
+	"github.com/starttoaster/reflex/internal/jev"
 	"github.com/starttoaster/reflex/internal/metrics"
 	"github.com/starttoaster/reflex/internal/router"
 )
@@ -160,4 +162,93 @@ func TestHealthzAndMethods(t *testing.T) {
 	if code, _ := do(t, http.MethodGet, srv.URL+"/alerts", nil); code != http.StatusMethodNotAllowed {
 		t.Errorf("GET /alerts = %d, want 405", code)
 	}
+}
+
+// investigateJev answers "informational" and, with pInvestigate, whether
+// to investigate.
+type investigateJev struct{ pInvestigate float64 }
+
+func (j investigateJev) Evaluate(context.Context, jev.Request) (*jev.Response, error) {
+	return &jev.Response{Model: "jev-test", Answers: map[string]jev.Answer{
+		"route": {Type: "choice", Probabilities: map[string]float64{"page now": 0.1, "informational": 0.9}, Confidence: 0.8},
+		"investigate": {Type: "choice", Probabilities: map[string]float64{
+			"investigate": j.pInvestigate, "self-explanatory": 1 - j.pInvestigate}, Confidence: 0.9},
+	}}, nil
+}
+
+type startCall struct {
+	groupKey, url string
+}
+
+type fakeInvestigator struct {
+	mu      sync.Mutex
+	started []startCall
+	forgot  []string
+}
+
+func (f *fakeInvestigator) Start(w *alertmanager.Webhook, url string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.started = append(f.started, startCall{w.GroupKey, url})
+	return true
+}
+
+func (f *fakeInvestigator) Forget(groupKey string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.forgot = append(f.forgot, groupKey)
+}
+
+func newInvestigatingServer(t *testing.T, pInvestigate float64, sender *fakeSender, inv *fakeInvestigator) *httptest.Server {
+	t.Helper()
+	s := &Server{
+		Router: &router.Router{
+			Config: router.Config{Timeout: time.Second, Threshold: 0.8, MinConfidence: 0.6, Investigate: true, InvestigateThreshold: 0.7},
+			Jev:    investigateJev{pInvestigate},
+			Sticky: router.NewSticky(time.Hour),
+		},
+		Sender:       sender,
+		Webhooks:     map[router.Channel]string{router.Urgent: "urgent-hook", router.Info: "info-hook"},
+		Metrics:      metrics.New(),
+		Log:          slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		SendTimeout:  time.Second,
+		Investigator: inv,
+	}
+	srv := httptest.NewServer(s.Handler())
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestInvestigationStartsAfterDelivery(t *testing.T) {
+	inv := &fakeInvestigator{}
+	srv := newInvestigatingServer(t, 0.9, &fakeSender{}, inv)
+	if code := post(t, srv, "firing-warning.json"); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if len(inv.started) != 1 || inv.started[0].url != "info-hook" {
+		t.Errorf("started = %+v, want one on info-hook", inv.started)
+	}
+	if code := post(t, srv, "resolved-critical.json"); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if len(inv.forgot) != 1 || len(inv.started) != 1 {
+		t.Errorf("resolved: forgot=%v started=%v", inv.forgot, inv.started)
+	}
+}
+
+func TestNoInvestigation(t *testing.T) {
+	t.Run("self-explanatory", func(t *testing.T) {
+		inv := &fakeInvestigator{}
+		post(t, newInvestigatingServer(t, 0.2, &fakeSender{}, inv), "firing-warning.json")
+		if len(inv.started) != 0 {
+			t.Errorf("started = %+v", inv.started)
+		}
+	})
+	t.Run("alert not delivered", func(t *testing.T) {
+		inv := &fakeInvestigator{}
+		post(t, newInvestigatingServer(t, 0.9, &fakeSender{err: errors.New("down")}, inv), "firing-warning.json")
+		if len(inv.started) != 0 {
+			t.Errorf("started = %+v", inv.started)
+		}
+	})
 }
