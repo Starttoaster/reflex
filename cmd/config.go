@@ -21,6 +21,7 @@ import (
 const (
 	envJevAPIKey       = "JEV_API_KEY"
 	envAnthropicAPIKey = "ANTHROPIC_API_KEY"
+	envGrafanaMCPToken = "GRAFANA_MCP_TOKEN"
 	envUrgentWebhook   = "DISCORD_URGENT_WEBHOOK"
 	envInfoWebhook     = "DISCORD_INFO_WEBHOOK"
 	envScrubSeparator  = "\n"

@@ -40,12 +40,15 @@ var DefaultAllowedTools = []string{
 // (Sift investigations), so they are never offered.
 var deniedTools = []string{"find_error_pattern_logs", "find_slow_requests"}
 
-// Grafana opens sessions to one mcp-grafana server over streamable HTTP. No
-// credentials are sent: mcp-grafana authenticates to Grafana itself, and
-// should run with --disable-write.
+// Grafana opens sessions to one mcp-grafana server over streamable HTTP.
+// mcp-grafana authenticates to Grafana itself, and should run with
+// --disable-write.
 type Grafana struct {
-	URL            string
-	Version        string
+	URL     string
+	Version string
+	// Token is sent as a bearer token when set, for an mcp-grafana server
+	// that requires one (MCP_GRAFANA_SERVER_TOKEN).
+	Token          string
 	ConnectTimeout time.Duration
 	RequestTimeout time.Duration
 	// Allowed lists the tools that may be published and called.
@@ -56,9 +59,13 @@ type Grafana struct {
 // Open connects and completes the MCP handshake. Callers must Close the
 // returned session.
 func (g *Grafana) Open(ctx context.Context) (*Session, error) {
+	httpClient := &http.Client{Timeout: g.RequestTimeout}
+	if g.Token != "" {
+		httpClient.Transport = &bearerTransport{token: g.Token, next: http.DefaultTransport}
+	}
 	transport := &mcp.StreamableClientTransport{
 		Endpoint:             g.URL,
-		HTTPClient:           &http.Client{Timeout: g.RequestTimeout},
+		HTTPClient:           httpClient,
 		MaxRetries:           2,
 		DisableStandaloneSSE: true,
 	}
@@ -73,6 +80,18 @@ func (g *Grafana) Open(ctx context.Context) (*Session, error) {
 		return nil, fmt.Errorf("connect to mcp-grafana: %w", err)
 	}
 	return &Session{g: g, session: session}, nil
+}
+
+// bearerTransport adds an Authorization header to every request.
+type bearerTransport struct {
+	token string
+	next  http.RoundTripper
+}
+
+func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set("Authorization", "Bearer "+t.token)
+	return t.next.RoundTrip(req)
 }
 
 func (g *Grafana) allowed(name string) bool {

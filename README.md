@@ -55,6 +55,7 @@ export JEV_API_KEY=...                 # optional; without it reflex routes by l
 export DISCORD_URGENT_WEBHOOK=https://discord.com/api/webhooks/...
 export DISCORD_INFO_WEBHOOK=https://discord.com/api/webhooks/...
 export ANTHROPIC_API_KEY=...            # optional; with --grafana-mcp-url turns on investigations
+export GRAFANA_MCP_TOKEN=...            # optional; mcp-grafana's MCP_GRAFANA_SERVER_TOKEN, if it has one
 reflex serve --grafana-mcp-url http://mcp-grafana.monitoring.svc:8000/mcp
 ```
 
@@ -83,7 +84,7 @@ reflex investigate --grafana-mcp-url http://localhost:8000/mcp -f payload.json
 
 ### Configuration
 
-Secrets are read from the environment only: `JEV_API_KEY`, `ANTHROPIC_API_KEY`, `DISCORD_URGENT_WEBHOOK` and `DISCORD_INFO_WEBHOOK`. Everything else is a flag, and every flag can also be set with an environment variable. A flag on the command line wins over the environment.
+Secrets are read from the environment only: `JEV_API_KEY`, `ANTHROPIC_API_KEY`, `GRAFANA_MCP_TOKEN`, `DISCORD_URGENT_WEBHOOK` and `DISCORD_INFO_WEBHOOK`. `GRAFANA_MCP_TOKEN` is sent to mcp-grafana as a bearer token; set it when the server runs with `MCP_GRAFANA_SERVER_TOKEN`. Everything else is a flag, and every flag can also be set with an environment variable. A flag on the command line wins over the environment.
 
 | Flag | Environment | Default | |
 | --- | --- | --- | --- |
@@ -177,7 +178,7 @@ Each decision is logged with `channel`, `reason`, `p_page`, `confidence`, `urgen
 
 ```sh
 docker run --rm -p 8080:8080 \
-  -e JEV_API_KEY -e ANTHROPIC_API_KEY -e REFLEX_GRAFANA_MCP_URL \
+  -e JEV_API_KEY -e ANTHROPIC_API_KEY -e GRAFANA_MCP_TOKEN -e REFLEX_GRAFANA_MCP_URL \
   -e DISCORD_URGENT_WEBHOOK -e DISCORD_INFO_WEBHOOK \
   ghcr.io/starttoaster/reflex:<version>
 ```
