@@ -91,3 +91,28 @@ func TestGrafanaUnreachable(t *testing.T) {
 		t.Error("expected a connection error")
 	}
 }
+
+func TestGrafanaBearerToken(t *testing.T) {
+	srv := mcp.NewServer(&mcp.Implementation{Name: "fake-mcp-grafana", Version: "1.0.0"}, nil)
+	mcpHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer s3cret" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		mcpHandler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(ts.Close)
+	g := &Grafana{URL: ts.URL, ConnectTimeout: 5 * time.Second, RequestTimeout: 5 * time.Second}
+
+	if session, err := g.Open(t.Context()); err == nil {
+		_ = session.Close()
+		t.Fatal("connected without a token")
+	}
+	g.Token = "s3cret"
+	session, err := g.Open(t.Context())
+	if err != nil {
+		t.Fatalf("connect with token: %v", err)
+	}
+	_ = session.Close()
+}

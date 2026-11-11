@@ -82,6 +82,7 @@ func (o *investigateOptions) newAgent(operatorContext string, log *slog.Logger) 
 		Grafana: &investigate.Grafana{
 			URL:            o.grafanaMCPURL,
 			Version:        version,
+			Token:          os.Getenv(envGrafanaMCPToken),
 			ConnectTimeout: grafanaConnectTimeout,
 			RequestTimeout: grafanaRequestTimeout,
 			Allowed:        investigate.DefaultAllowedTools,
